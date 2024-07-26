@@ -1,5 +1,24 @@
 {
+  "type": "module",
   "devDependencies": {
-    "@types/node": "^20.14.12"
+    "@types/node": "^20.14.12",
+    "@types/semver": "^7.5.8",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "semver": "^7.6.3",
+    "tar": "^7.4.3",
+    "is-thirteen": "2.0.0"
+  },
+  "scripts": {
+    "build": "tsc"
+  },
+  "ts-node": {
+    "compilerOptions": {
+      "module": "ESNext",
+      "target": "ESNext"
+    }
   }
 }
