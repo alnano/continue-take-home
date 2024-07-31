@@ -9,11 +9,13 @@
   "dependencies": {
     "node-fetch": "^3.3.2",
     "semver": "^7.6.3",
-    "tar": "^7.4.3",
-    "is-thirteen": "2.0.0"
+    "tar": "^7.4.3"
   },
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "start": "node dist/package_manager.js",
+    "add": "npm run build && node dist/package_manager.js add",
+    "install-dep": "npm run build && node dist/package_manager.js install"
   },
   "ts-node": {
     "compilerOptions": {

@@ -1,62 +1,57 @@
-// import { promises } from "dns";
-import { fileURLToPath } from 'url';
-import { promises as fs } from 'fs';
-// const fs = require('fs').promises;
-import fetch from 'node-fetch';
-import semver from 'semver';
-import { dirname, join, resolve } from 'path';
-import { extract } from 'tar';
-// const fetch = require('node-fetch')
-// const semver = require('semver');
-// todo
-//[x]init pckJson file
-//[x]write to pckJson file
-//[x]fetch data from registry
-//[x]recurse on dependencies
-//[x]install to node_modules
-//[]edge cases?
-//[]tests
-// commands 
-// node dist/package_manager.js install
+import { fileURLToPath } from "url";
+import { promises as fs } from "fs";
+import fetch from "node-fetch";
+import semver from "semver";
+import { dirname, join, resolve } from "path";
+import { extract } from "tar";
+//file paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const rootDir = resolve(__dirname, '..');
-console.log(rootDir, 'rootDir');
-const nodeModulesPath = join(rootDir, 'node_modules');
-const validCommmands = { "add": true, "install": true };
+const rootDir = resolve(__dirname, "..");
+const nodeModulesPath = join(rootDir, "node_modules");
+const validCommmands = { add: true, install: true };
 const args = process.argv.slice(2);
 const command = args[0];
 const packageName = args[1];
 const getVersion = (packageInput) => {
     const versionNumber = packageInput.match(/@(.+)/);
-    // "npm:string-width@^4.2.0",
-    // return versionNumber ? versionNumber[1] : false
     return versionNumber ? versionNumber[1] : "";
 };
-const filePath = './package.json';
+const filePath = "./package.json";
 async function fetchPackageMetadata(packageName, version = false) {
-    // const url = `https://registry.npmjs.org/${packageName}`;
-    const url = version ? `https://registry.npmjs.org/${packageName}/${version}` : `https://registry.npmjs.org/${packageName}`;
+    const url = version
+        ? `https://registry.npmjs.org/${packageName}/${version}`
+        : `https://registry.npmjs.org/${packageName}`;
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
     }
-    const metadata = await response.json();
+    const metadata = (await response.json());
     return metadata;
 }
 const writeToPackageJson = async (jsonData, packageNme, packageVersion) => {
-    const newJsonData = { ...jsonData, dependencies: { ...jsonData.dependencies, [packageNme]: packageVersion } };
+    const newJsonData = {
+        ...jsonData,
+        dependencies: {
+            ...jsonData.dependencies,
+            [packageNme]: packageVersion,
+        },
+    };
     const jsonString = JSON.stringify(newJsonData, null, 2);
     await fs.writeFile(filePath, jsonString);
 };
 const addDependecies = async (inputedPackageName) => {
     const strippedVersionNumber = getVersion(inputedPackageName);
-    const cleanedInput = strippedVersionNumber ? inputedPackageName.split('@')[0] : inputedPackageName;
+    const cleanedInput = strippedVersionNumber
+        ? inputedPackageName.split("@")[0]
+        : inputedPackageName;
     const packageResponse = await fetchPackageMetadata(cleanedInput, strippedVersionNumber);
     const packageNme = packageResponse.name;
-    const packageVersion = strippedVersionNumber ? strippedVersionNumber : packageResponse["dist-tags"]["latest"];
+    const packageVersion = strippedVersionNumber
+        ? strippedVersionNumber
+        : packageResponse["dist-tags"]["latest"];
     try {
-        const data = await fs.readFile(filePath, 'utf8');
+        const data = await fs.readFile(filePath, "utf8");
         const jsonData = JSON.parse(data);
         await writeToPackageJson(jsonData, packageNme, packageVersion);
     }
@@ -67,7 +62,7 @@ const addDependecies = async (inputedPackageName) => {
 const getDependencies = async () => {
     const dependenciesList = [];
     try {
-        const data = await fs.readFile('package.json');
+        const data = await fs.readFile("package.json");
         const dataJson = JSON.parse(data.toString());
         for (const key in dataJson.dependencies) {
             dependenciesList.push({ [key]: dataJson.dependencies[key] });
@@ -75,7 +70,7 @@ const getDependencies = async () => {
         return dependenciesList;
     }
     catch (err) {
-        console.error('Error reading/parsing package.json', err);
+        console.error("Error reading/parsing package.json", err);
         return [];
     }
 };
@@ -84,9 +79,9 @@ const fetchPackageJson = async (packageName, versionRange) => {
     if (!metadata) {
         return null;
     }
-    // const strippedVersion = versionRange.startsWith("@") ? versionRange.slice(1) : versionRange
-    const strippedVersion = getVersion(versionRange) ? getVersion(versionRange) : versionRange;
-    // console.log(strippedVersion, 'versionnn')
+    const strippedVersion = getVersion(versionRange)
+        ? getVersion(versionRange)
+        : versionRange;
     const version = semver.maxSatisfying(Object.keys(metadata.versions), strippedVersion);
     if (!version) {
         throw new Error(`No satisfying version found for ${packageName} with range ${strippedVersion}`);
@@ -94,7 +89,7 @@ const fetchPackageJson = async (packageName, versionRange) => {
     return metadata.versions[version];
 };
 const downloadAndExtractTarball = async (tarballUrl, packageName) => {
-    const tarballPath = join(rootDir, packageName + '.tgz');
+    const tarballPath = join(rootDir, packageName + ".tgz");
     // Ensure node_modules directory exists
     const createNodeModuleFolder = packageName;
     const targetPath = join(nodeModulesPath, createNodeModuleFolder);
@@ -109,14 +104,16 @@ const downloadAndExtractTarball = async (tarballUrl, packageName) => {
     if (!response.ok) {
         throw new Error(`Failed to fetch ${tarballUrl}: ${response.statusText}`);
     }
-    //  C:\projects\interviews\continue-take-home\src\package_manager.ts
     // Write the tarball to a file using arrayBuffer
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Buffer
     await fs.writeFile(tarballPath, buffer);
     console.log(`Tarball downloaded and saved to: ${tarballPath}`);
     // Verify the tarball file exists
-    const fileExists = await fs.access(tarballPath).then(() => true).catch(() => false);
+    const fileExists = await fs
+        .access(tarballPath)
+        .then(() => true)
+        .catch(() => false);
     if (!fileExists) {
         throw new Error(`Tarball file not found at: ${tarballPath}`);
     }
@@ -124,26 +121,26 @@ const downloadAndExtractTarball = async (tarballUrl, packageName) => {
     try {
         await extract({
             file: tarballPath,
-            cwd: targetPath
+            cwd: targetPath,
         });
         console.log(`Tarball extracted to: ${nodeModulesPath}`);
     }
     catch (error) {
         throw new Error(`Failed to error ${error}`);
-        console.error(`Error extracting tarball: ${error}`);
     }
     // Clean up the tarball file
     await fs.unlink(tarballPath);
     console.log(`Tarball file removed: ${tarballPath}`);
     // Verify extraction by listing files
     const extractedFiles = await fs.readdir(nodeModulesPath);
-    console.log(`Files in ${nodeModulesPath}:`, extractedFiles);
+    console.log(`Files extracted to ${nodeModulesPath}:`, extractedFiles);
 };
 const valdiateVersion = (version) => {
+    //Hacky way of handling cases like "string-width-cjs": "npm:string-width@^4.2.0".
+    //"string-width-cjs" is an entirely different package; it should defer to "npm:string-width@^4.2.0".
     const strippedVersion = version.match(/npm:(.+)/);
     if (strippedVersion) {
         const versList = strippedVersion[1].match(/^([^@]+)@(.+)$/);
-        console.log(versList, 'versionList');
         return versList ? [versList[1], versList[2]] : false;
     }
     else {
@@ -177,10 +174,11 @@ const getDependenciesRecursively = async (initialDependencies) => {
     await addDependencies(initialDependencies);
     return Object.values(allDependencies);
 };
-//node package_manager.ts add is-thirteen
+//add is-thirteen
 if (command in validCommmands && command === "add") {
     addDependecies(packageName);
 }
+//install
 if (command in validCommmands && command == "install") {
     (async () => {
         try {

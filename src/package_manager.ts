@@ -1,237 +1,266 @@
-// import { promises } from "dns";
-import { fileURLToPath } from 'url';
-import { promises as fs } from 'fs';
-// const fs = require('fs').promises;
-import fetch from 'node-fetch';
-import semver from 'semver';
-import { dirname, join, resolve} from 'path';
-import { extract } from 'tar';
-import { Stream } from 'stream';
-import { validateHeaderValue } from 'http';
-// const fetch = require('node-fetch')
-// const semver = require('semver');
-
-// todo
-//[x]init pckJson file
-//[x]write to pckJson file
-//[x]fetch data from registry
-//[x]recurse on dependencies
-//[x]install to node_modules
-//[]edge cases?
-//[]tests
-// commands 
-// node dist/package_manager.js install
+import { fileURLToPath } from "url";
+import { promises as fs } from "fs";
+import fetch from "node-fetch";
+import semver from "semver";
+import { dirname, join, resolve } from "path";
+import { extract } from "tar";
+//file paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const rootDir = resolve(__dirname, '..');
-console.log(rootDir, 'rootDir')
-const nodeModulesPath = join(rootDir, 'node_modules');
+const rootDir = resolve(__dirname, "..");
+const nodeModulesPath = join(rootDir, "node_modules");
 
-const validCommmands = {"add": true, "install": true}
+const validCommmands = { add: true, install: true };
 
 const args = process.argv.slice(2);
 const command = args[0];
 const packageName = args[1];
 
 const getVersion = (packageInput: string) => {
-  const versionNumber = packageInput.match(/@(.+)/)
-  // "npm:string-width@^4.2.0",
-  // return versionNumber ? versionNumber[1] : false
-  return versionNumber ? versionNumber[1] : "" 
-}
+    const versionNumber = packageInput.match(/@(.+)/);
+    return versionNumber ? versionNumber[1] : "";
+};
 interface PackageMetadata {
-  versions: { [key: string]: any };
-  [key: string]: any;
+    versions: { [key: string]: any };
+    [key: string]: any;
 }
 
 interface PackageJson {
-  name: string;
-  version: string;
-  dependencies?: { [key: string]: string };
-  dist: { tarball: string };
-  versions: { [version: string]: PackageJson };
+    name: string;
+    version: string;
+    dependencies?: { [key: string]: string };
+    dist: { tarball: string };
+    versions: { [version: string]: PackageJson };
 }
 
-const filePath = './package.json'
-async function fetchPackageMetadata(packageName:string, version: string | false = false): Promise<PackageMetadata> {
-  // const url = `https://registry.npmjs.org/${packageName}`;
-  const url = version ? `https://registry.npmjs.org/${packageName}/${version}` : `https://registry.npmjs.org/${packageName}`
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
-  }
+const filePath = "./package.json";
 
-  const metadata = await response.json() as PackageMetadata;
-  return metadata
+async function fetchPackageMetadata(
+    packageName: string,
+    version: string | false = false
+): Promise<PackageMetadata> {
+    const url = version
+        ? `https://registry.npmjs.org/${packageName}/${version}`
+        : `https://registry.npmjs.org/${packageName}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+    }
+
+    const metadata = (await response.json()) as PackageMetadata;
+    return metadata;
 }
 
-const writeToPackageJson = async (jsonData: PackageJson, packageNme:string, packageVersion:string): Promise<any> => {
-  const newJsonData = {...jsonData, dependencies: {...jsonData.dependencies, [packageNme]: packageVersion}};
-  const jsonString = JSON.stringify(newJsonData, null, 2);
-  await fs.writeFile(filePath, jsonString)
-}
-
+const writeToPackageJson = async (
+    jsonData: PackageJson,
+    packageNme: string,
+    packageVersion: string
+): Promise<any> => {
+    const newJsonData = {
+        ...jsonData,
+        dependencies: {
+            ...jsonData.dependencies,
+            [packageNme]: packageVersion,
+        },
+    };
+    const jsonString = JSON.stringify(newJsonData, null, 2);
+    await fs.writeFile(filePath, jsonString);
+};
 
 const addDependecies = async (inputedPackageName: string): Promise<void> => {
-  const strippedVersionNumber = getVersion(inputedPackageName) 
-  const cleanedInput = strippedVersionNumber ? inputedPackageName.split('@')[0] : inputedPackageName
-  const packageResponse = await fetchPackageMetadata(cleanedInput, strippedVersionNumber)
-  const packageNme = packageResponse.name
-  const packageVersion = strippedVersionNumber ? strippedVersionNumber : packageResponse["dist-tags"]["latest"]
+    const strippedVersionNumber = getVersion(inputedPackageName);
+    const cleanedInput = strippedVersionNumber
+        ? inputedPackageName.split("@")[0]
+        : inputedPackageName;
+    const packageResponse = await fetchPackageMetadata(
+        cleanedInput,
+        strippedVersionNumber
+    );
+    const packageNme = packageResponse.name;
+    const packageVersion = strippedVersionNumber
+        ? strippedVersionNumber
+        : packageResponse["dist-tags"]["latest"];
 
-  try {
-    const data = await fs.readFile(filePath, 'utf8')
-    const jsonData =  JSON.parse(data)
-    await writeToPackageJson(jsonData, packageNme, packageVersion)
-  } catch (err) {
-    console.error(err)
-  }
-}
+    try {
+        const data = await fs.readFile(filePath, "utf8");
+        const jsonData = JSON.parse(data);
+        await writeToPackageJson(jsonData, packageNme, packageVersion);
+    } catch (err) {
+        console.error(err);
+    }
+};
 
 interface PackageDependencies {
-  [key: string]: string;
+    [key: string]: string;
 }
 
 const getDependencies = async (): Promise<PackageDependencies[]> => {
-  const dependenciesList: PackageDependencies[] = [];
-  try {
-    const data = await fs.readFile('package.json');
-    const dataJson: PackageJson = JSON.parse(data.toString());
+    const dependenciesList: PackageDependencies[] = [];
+    try {
+        const data = await fs.readFile("package.json");
+        const dataJson: PackageJson = JSON.parse(data.toString());
 
-    for (const key in dataJson.dependencies) {
-      dependenciesList.push({ [key]: dataJson.dependencies[key] });
+        for (const key in dataJson.dependencies) {
+            dependenciesList.push({ [key]: dataJson.dependencies[key] });
+        }
+        return dependenciesList;
+    } catch (err) {
+        console.error("Error reading/parsing package.json", err);
+        return [];
     }
-    return dependenciesList;
-  } catch (err) {
-    console.error('Error reading/parsing package.json', err);
-    return []
-  }
-}
+};
 
-const fetchPackageJson = async (packageName:string, versionRange:string): Promise<any> => {
-  const metadata = await fetchPackageMetadata(packageName);
-  if (!metadata) {
-    return null;
-  }
-  // const strippedVersion = versionRange.startsWith("@") ? versionRange.slice(1) : versionRange
-  const strippedVersion = getVersion(versionRange) ? getVersion(versionRange) : versionRange
-  // console.log(strippedVersion, 'versionnn')
-  const version = semver.maxSatisfying(Object.keys(metadata.versions), strippedVersion);
-  if (!version) {
-    throw new Error(`No satisfying version found for ${packageName} with range ${strippedVersion}`);
-  }
+const fetchPackageJson = async (
+    packageName: string,
+    versionRange: string
+): Promise<any> => {
+    const metadata = await fetchPackageMetadata(packageName);
+    if (!metadata) {
+        return null;
+    }
+    const strippedVersion = getVersion(versionRange)
+        ? getVersion(versionRange)
+        : versionRange;
+    const version = semver.maxSatisfying(
+        Object.keys(metadata.versions),
+        strippedVersion
+    );
+    if (!version) {
+        throw new Error(
+            `No satisfying version found for ${packageName} with range ${strippedVersion}`
+        );
+    }
 
-  return metadata.versions[version];
-}
+    return metadata.versions[version];
+};
 
-const downloadAndExtractTarball = async (tarballUrl:string, packageName:string): Promise<any> => {
-  const tarballPath = join(rootDir, packageName + '.tgz');
-   // Ensure node_modules directory exists
-   const createNodeModuleFolder = packageName
-   const targetPath = join(nodeModulesPath, createNodeModuleFolder)
-   await fs.mkdir(targetPath, {recursive: true})
+const downloadAndExtractTarball = async (
+    tarballUrl: string,
+    packageName: string
+): Promise<any> => {
+    const tarballPath = join(rootDir, packageName + ".tgz");
+    // Ensure node_modules directory exists
+    const createNodeModuleFolder = packageName;
+    const targetPath = join(nodeModulesPath, createNodeModuleFolder);
+    await fs.mkdir(targetPath, { recursive: true });
 
-   // Ensure parent directories exist for tarball path
-   const tarballDir = dirname(tarballPath);
-   await fs.mkdir(tarballDir, { recursive: true });
- 
-   console.log(`Downloading tarball from: ${tarballUrl}`);
-   console.log(`Tarball will be saved to: ${tarballPath}`);
-   console.log(`Extracting to: ${nodeModulesPath}`);
- 
-   const response = await fetch(tarballUrl);
-   if (!response.ok) {
-     throw new Error(`Failed to fetch ${tarballUrl}: ${response.statusText}`);
-   }
-  //  C:\projects\interviews\continue-take-home\src\package_manager.ts
-   // Write the tarball to a file using arrayBuffer
-   const arrayBuffer = await response.arrayBuffer();
-   const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Buffer
-   await fs.writeFile(tarballPath, buffer);
-   console.log(`Tarball downloaded and saved to: ${tarballPath}`);
- 
-   // Verify the tarball file exists
-   const fileExists = await fs.access(tarballPath).then(() => true).catch(() => false);
-   if (!fileExists) { 
-     throw new Error(`Tarball file not found at: ${tarballPath}`);
-   }
- 
-   // Extract the tarball to the node_modules directory
-   try {
-    await extract({
-      file: tarballPath,
-      cwd: targetPath 
-    });
-    console.log(`Tarball extracted to: ${nodeModulesPath}`);
-  } catch (error) {
-    throw new Error(`Failed to error ${error}`); 
-    console.error(`Error extracting tarball: ${error}`);
-  }
- 
-   // Clean up the tarball file
-   await fs.unlink(tarballPath);
-   console.log(`Tarball file removed: ${tarballPath}`);
- 
-   // Verify extraction by listing files
-   const extractedFiles = await fs.readdir(nodeModulesPath);
-   console.log(`Files in ${nodeModulesPath}:`, extractedFiles);
+    // Ensure parent directories exist for tarball path
+    const tarballDir = dirname(tarballPath);
+    await fs.mkdir(tarballDir, { recursive: true });
 
-}
+    console.log(`Downloading tarball from: ${tarballUrl}`);
+    console.log(`Tarball will be saved to: ${tarballPath}`);
+    console.log(`Extracting to: ${nodeModulesPath}`);
+
+    const response = await fetch(tarballUrl);
+    if (!response.ok) {
+        throw new Error(
+            `Failed to fetch ${tarballUrl}: ${response.statusText}`
+        );
+    }
+
+    // Write the tarball to a file using arrayBuffer
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Buffer
+    await fs.writeFile(tarballPath, buffer);
+    console.log(`Tarball downloaded and saved to: ${tarballPath}`);
+
+    // Verify the tarball file exists
+    const fileExists = await fs
+        .access(tarballPath)
+        .then(() => true)
+        .catch(() => false);
+    if (!fileExists) {
+        throw new Error(`Tarball file not found at: ${tarballPath}`);
+    }
+
+    // Extract the tarball to the node_modules directory
+    try {
+        await extract({
+            file: tarballPath,
+            cwd: targetPath,
+        });
+        console.log(`Tarball extracted to: ${nodeModulesPath}`);
+    } catch (error) {
+        throw new Error(`Failed to error ${error}`);
+    }
+
+    // Clean up the tarball file
+    await fs.unlink(tarballPath);
+    console.log(`Tarball file removed: ${tarballPath}`);
+
+    // Verify extraction by listing files
+    const extractedFiles = await fs.readdir(nodeModulesPath);
+    console.log(`Files extracted to ${nodeModulesPath}:`, extractedFiles);
+};
 
 const valdiateVersion = (version: string) => {
-  const strippedVersion = version.match(/npm:(.+)/)
+    //Hacky way of handling cases like "string-width-cjs": "npm:string-width@^4.2.0".
+    //"string-width-cjs" is an entirely different package; it should defer to "npm:string-width@^4.2.0".
+    const strippedVersion = version.match(/npm:(.+)/);
 
-  if (strippedVersion) {
-    const versList = strippedVersion[1].match(/^([^@]+)@(.+)$/)
+    if (strippedVersion) {
+        const versList = strippedVersion[1].match(/^([^@]+)@(.+)$/);
+        return versList ? [versList[1], versList[2]] : false;
+    } else {
+        return false;
+    }
+};
 
-    console.log(versList, 'versionList')
-    return versList ? [versList[1], versList[2]] : false
-  }else{
-    return false 
-  }
-}
+const getDependenciesRecursively = async (
+    initialDependencies: PackageDependencies[]
+): Promise<PackageJson[]> => {
+    const allDependencies: { [key: string]: PackageJson } = {};
 
-const getDependenciesRecursively = async (initialDependencies: PackageDependencies[]): Promise<PackageJson[]>=> {
-  const allDependencies: { [key: string]: PackageJson } = {};
+    async function addDependencies(
+        dependencies: PackageDependencies[]
+    ): Promise<void> {
+        for (const dep of dependencies) {
+            let [name, versionRange] = Object.entries(dep)[0] as [
+                string,
+                string
+            ];
+            // sanity versionName
+            const validatedVersions = valdiateVersion(versionRange);
+            if (validatedVersions) {
+                name = validatedVersions[0];
+                versionRange = validatedVersions[1];
+            }
 
-  async function addDependencies(dependencies: PackageDependencies[]): Promise<void> {
-    for (const dep of dependencies) {
-      let [name, versionRange] = Object.entries(dep)[0] as [string, string];
-      // sanity versionName
-      const validatedVersions = valdiateVersion(versionRange)
-      if(validatedVersions) {
-        name = validatedVersions[0]
-        versionRange = validatedVersions[1]
-      }
-
-      if (!allDependencies[name]) {
-        const packageJson = await fetchPackageJson(name, versionRange);
-        if (packageJson) {
-          allDependencies[name] = packageJson;
-          await downloadAndExtractTarball(packageJson.dist.tarball, name);
-          if (packageJson.dependencies) {
-            const subDependencies: PackageDependencies[] = Object.entries(packageJson.dependencies).map(([key, value]) => ({ [key]: value as string }));
-            await addDependencies(subDependencies);
-          }
+            if (!allDependencies[name]) {
+                const packageJson = await fetchPackageJson(name, versionRange);
+                if (packageJson) {
+                    allDependencies[name] = packageJson;
+                    await downloadAndExtractTarball(
+                        packageJson.dist.tarball,
+                        name
+                    );
+                    if (packageJson.dependencies) {
+                        const subDependencies: PackageDependencies[] =
+                            Object.entries(packageJson.dependencies).map(
+                                ([key, value]) => ({ [key]: value as string })
+                            );
+                        await addDependencies(subDependencies);
+                    }
+                }
+            }
         }
-      }
     }
-  }
-  await addDependencies(initialDependencies);
-  return Object.values(allDependencies);
+    await addDependencies(initialDependencies);
+    return Object.values(allDependencies);
+};
+//add is-thirteen
+if (command in validCommmands && command === "add") {
+    addDependecies(packageName);
 }
-//node package_manager.ts add is-thirteen
-if(command in validCommmands && command === "add") {
-  addDependecies(packageName)
-}
-
-if(command in validCommmands && command == "install") {
-  (async () => {
-    try{
-     const dependenciesList = await getDependencies()
-     await getDependenciesRecursively(dependenciesList)
-    }catch(err) {
-      console.error(err)
-    }
-  })();
+//install
+if (command in validCommmands && command == "install") {
+    (async () => {
+        try {
+            const dependenciesList = await getDependencies();
+            await getDependenciesRecursively(dependenciesList);
+        } catch (err) {
+            console.error(err);
+        }
+    })();
 }
